@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine with Firebase</title>
+
+    <!-- Firebase v11.1.0 SDK -->
+    <script type="module">
+        // Import Firebase functions
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js"; // Firestore
+
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBx653UvpNj6UugklESz_Xzjz-m0e1ZSLY",
+            authDomain: "shaden-webpage.firebaseapp.com",
+            projectId: "shaden-webpage",
+            storageBucket: "shaden-webpage.firebasestorage.app",
+            messagingSenderId: "235962263240",
+            appId: "1:235962263240:web:65760cb7ce12fbb7a0a7fd",
+            measurementId: "G-HJMZN4ESN5"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app); // Initialize Firestore
+    </script>
+
+    <!-- TensorFlow.js and Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            background-color: #FFCC99; /* Light orange background */
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        .text-block {
+            background-color: rgba(255, 255, 255, 0.8); /* Dewy white background */
+            color: #333; /* Darker text color */
+            padding: 15px; /* Reduced padding */
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            margin: 5px 0; /* Reduced margin for tighter spacing */
+        }
+
+        #webcam-container {
+            margin: 10px 0; /* Reduced margin */
+        }
+
+        #label-container {
+            margin: 10px 0; /* Reduced margin */
+        }
+
+        #counter-container {
+            margin: 10px 0; /* Reduced margin */
+            font-size: 1.5em;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px; /* Kept the same margin */
+        }
+
+        button:hover {
+            background-color: rgba(255, 255, 255, 1);
+        }
+    </style>
+</head>
+<body>
+    <div class="text-block">Teachable Machine Image Model</div>
+    <button type="button" onclick="init()" class="text-block">Start</button>
+    <div id="webcam-container" class="text-block"></div>
+    <div id="label-container" class="text-block"></div>
+    <div id="counter-container" class="text-block">Total Detections: <span id="counter">0</span></div>
+    <button type="button" onclick="resetCounter()" class="text-block">Reset Counter</button>
+
+    <script type="text/javascript">
+        const URL = "https://teachablemachine.withgoogle.com/models/Z9BWfrXD5/";
+        let model, webcam, labelContainer, maxPredictions;
+        let detectionCount = 0; // Initialize detection counter
+
+        // Load the image model and setup the webcam
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            // Load the model and metadata
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            // Setup the webcam
+            const flip = true; // whether to flip the webcam
+            webcam = new tmImage.Webcam(200, 200, flip); // width, height, flip
+            await webcam.setup(); // request access to the webcam
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+
+            // Append elements to the DOM
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                labelContainer.appendChild(document.createElement("div"));
+            }
+        }
+
+        async function loop() {
+            webcam.update(); // update the webcam frame
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // Run the webcam image through the image model
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+                labelContainer.childNodes[i].innerHTML = classPrediction;
+
+                // Check if the prediction exceeds a certain threshold
+                if (prediction[i].probability > 0.7) { // Adjust threshold as needed
+                    detectionCount++;
+                    document.getElementById("counter").innerText = detectionCount;
+                    await saveDetectionToFirestore(detectionCount);
+                }
+            }
+        }
+
+        // Save detection count to Firestore
+        async function saveDetectionToFirestore(count) {
+            try {
+                await db.collection("detections").add({
+                    count: count,
+                    timestamp: new Date()
+                });
+                console.log("Detection saved to Firestore:", count);
+            } catch (error) {
+                console.error("Error saving detection to Firestore:", error);
+            }
+        }
+
+        // Reset counter function
+        function resetCounter() {
+            detectionCount = 0;
+            document.getElementById("counter").innerText = detectionCount;
+            console.log("Counter reset to zero");
+        }
+    </script>
+</body>
+</html>
